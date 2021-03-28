@@ -1,0 +1,125 @@
+---
+title: "LoGiudice_QualityControl"
+author: "Rachel Jackson"
+date: "27/07/2020"
+output: html_document
+---
+```{r, echo=FALSE}
+library(Matrix)
+library(ggplot2)
+library(scater)
+library(scran)
+library(DropletUtils)
+library(PCAtools)
+```
+
+
+```{r, echo=FALSE}
+#Load data from directory:
+data_dir <- "/Users/RachelJackson/Library/Mobile Documents/com~apple~CloudDocs/R-090321"
+tmp_data <- read.table(paste(data_dir,"GSE122466_Merged5347cells_RAW_5.csv",sep="/"),stringsAsFactors = F, sep = ",", header = T)
+```
+
+Building a single-cell experiment object:
+```{r}
+metadata <- as.data.frame(strsplit(colnames(tmp_data)[2:dim(tmp_data)[2]],"_"))
+metadata <- t(metadata)
+metadata <- as.data.frame(metadata)
+colnames(metadata) <- c("lane","barcode")
+rownames(metadata) <- seq(1:dim(metadata)[1])
+#genes <- tmp_data[,1]                                # genes are the names of the rows (1st column of loaded matrix)
+genes <- as.data.frame(tmp_data[,1])
+colnames(genes) <- c('genes')
+counts <- tmp_data[,2:dim(tmp_data)[2]]
+colnames(counts) <- metadata$barcode
+#(then define the SCE object as before)
+# build sc object
+sce <- SingleCellExperiment(list(counts = as.matrix(counts)),
+                            colData = metadata,
+                            rowData = genes)
+rownames(sce) <- rowData(sce)$genes
+dim(sce) # should be a 15176 x 5347 object/dataframe
+```
+
+Retrieving the mitochondrial transcripts using genomic locations included in the row-level annotation for the SingleCellExperiment.
+```{r, echo=TRUE}
+location <- rowRanges(sce)
+is.mito <- grepl("^mt-", rownames(sce))
+library(scater)
+df <- perCellQCMetrics(sce, subsets=list(Mito=is.mito))
+df
+```
+```{r, echo=TRUE}
+sce<- addPerCellQC(sce, subsets=list(Mito=is.mito))
+colnames(colData(sce))
+```
+
+
+Identifying outliers using adaptive thresholds:
+Log transformation guarantees the threshold chosen is not a negative value. 
+Is it correct that there are no library size or expression level thresholds?
+```{r}
+qc.lib <- df$sum > 12000
+qc.lib3 <- isOutlier(df$sum, log=TRUE, type="higher")  
+qc.lib2 <- isOutlier(df$sum, log=TRUE, type="lower")
+qc.nexprs<- df$detected > 4200
+qc.nexprs3<- isOutlier(df$detected, log=TRUE, type="higher")
+qc.nexprs2<- isOutlier(df$detected, log=TRUE, type="lower")
+```
+
+```{r}
+attr(qc.nexprs2, "thresholds")
+```
+
+```{r}
+qc.mito2 <- isOutlier(df$subsets_Mito_percent, type="higher")
+attr(qc.mito2, "thresholds")
+```
+
+Cells which are outliers for these metrics are considered low quality and so are discarded:
+```{r}
+discard <- qc.nexprs |qc.lib |qc.lib2 | qc.nexprs2 | qc.mito2
+
+# Summarize the number of cells removed for each reason.
+DataFrame(LibSize=sum(qc.lib2+qc.lib), NExprs=sum(qc.nexprs2+qc.nexprs), MitoProp=sum(qc.mito2), Total=sum(discard))
+```
+
+```{r}
+reasons <- quickPerCellQC(df, percent_subsets=c("subsets_Mito_percent"))
+reasons$discard <- discard
+```
+
+Diagnostic plots: 
+Altered metadata to split into Lane 1 and Lane 2 replicates. Then plotted total count, detected features and mitochondrial gene percentage for each cell in the two replicates:
+```{r fig.width=7, fig.height=10}
+sce$discard <- reasons$discard
+colData(sce) <- cbind(colData(sce), df)
+sce$lane <- factor(sce$lane)
+```
+
+log=FALSE
+```{r fig.width=7, fig.height=10}
+gridExtra::grid.arrange(
+    plotColData(sce, x="lane", y="sum", colour_by="discard")
+               + ggtitle("Total count"),
+    plotColData(sce, x="lane", y="detected", colour_by="discard") 
+               + ggtitle("Detected features"),
+    plotColData(sce, x="lane", y="subsets_Mito_percent", 
+        colour_by="discard") + ggtitle("Mito percent"),
+    ncol=1
+)
+```
+
+Additional plots:
+```{r, echo=TRUE}
+plotColData(sce, x = "sum", y="detected", colour_by="lane") 
+```
+There does appear to be a batch effect. 
+```{r, echo=TRUE}
+sce <- sce[, !sce$discard] #keeping columns not to be discarded only
+dim(sce)
+```
+
+```{r, echo=TRUE}
+saveRDS(sce, "./LoGiudice_QualityControl_data_sce.rds")
+```
