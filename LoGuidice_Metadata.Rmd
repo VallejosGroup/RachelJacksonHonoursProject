@@ -142,6 +142,18 @@ colData(sce_lane1)$cc_S_score <- assignments$scores$S
 colData(sce_lane1)$cc_Phase <- assignments$phases
 ```
 
+Saving CellAssign probabilities as cell metadata:
+```{r}
+cell_probs<-as.data.frame(cellprobs(fit_cells))
+colData(sce_lane1)$Photoreceptor_Precursors<-cell_probs$`Photoreceptor precursors`
+colData(sce_lane1)$Neurogenic<-cell_probs$Neurogenic
+colData(sce_lane1)$Amacrine_cells<-cell_probs$`Amacrine Cells`
+colData(sce_lane1)$Late_Progenitor<-cell_probs$`Late Progenitor`
+colData(sce_lane1)$Early_Progenitor<-cell_probs$`Early Progenitor`
+colData(sce_lane1)$RGC<-cell_probs$RGC
+colData(sce_lane1)$other<-cell_probs$other+cell_probs$`Intermediate Progenitor`
+```
+
 Transformations and HVG selection:
 Create assays:
 ```{r}
@@ -182,11 +194,11 @@ To save files:
 library(Matrix)
 library(scater)
 # save cell_metadata
-write.csv(colData(sce_lane1),file="LoGiudice_cell_metadata_file_lane1_3")
+write.csv(colData(sce_lane1),file="LoGiudice_cell_metadata_file_lane1_4")
 # save gene metadata
-write.csv(rowData(sce_lane1),file="LoGiudice_gene_metadata_file_lane1_3")
+write.csv(rowData(sce_lane1),file="LoGiudice_gene_metadata_file_lane1_4")
 # save counts matrix
-Matrix::writeMM(as(counts(sce_lane1), "dgTMatrix"), file='LoGiudice_counts_file_lane1_3' )
+Matrix::writeMM(as(counts(sce_lane1), "dgTMatrix"), file='LoGiudice_counts_file_lane1_4' )
 ```
 
 
